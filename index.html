@@ -169,7 +169,10 @@
   .doc-thumb-wrap .rm { position: absolute; top: -6px; right: -6px; background: var(--red); color: #fff; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: .7rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
   .doc-name { font-size: .72rem; color: var(--muted); margin-top: 4px; max-width: 76px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .doc-tx-link { font-size: .8rem; color: var(--muted); margin-top: 10px; }
-  @media (hover: hover) and (pointer: fine) { .dropzone { display: block; } }
+  /* input file invisible mais présent (display:none bloque .click() sur iOS Safari) */
+  .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  .dropzone { display: block; }
+  @media (hover: none), (pointer: coarse) { .dropzone { display: none; } }
 
   @media (max-width: 600px) {
     .charts { grid-template-columns: 1fr; }
@@ -246,7 +249,7 @@
             <span class="it-sub">Photo (.jpg/.png), capture d'écran ou PDF</span>
           </div>
         </div>
-        <input type="file" id="docInput" accept="application/pdf,.jpg,.jpeg,.png,.gif,.webp,image/*" multiple hidden>
+        <input type="file" id="docInput" accept="application/pdf,.jpg,.jpeg,.png,.gif,.webp,image/*" multiple class="visually-hidden">
         <label class="dropzone" id="dropzone">
           <span class="dz-icon">⬇️</span>
           <strong>Glissez un fichier ici</strong> sur ordinateur
@@ -684,9 +687,12 @@
     const fileInput = document.createElement("input");
     fileInput.type = "file";
     fileInput.accept = "image/*";
-    fileInput.capture = "environment";
+    fileInput.setAttribute("capture", "environment");
+    fileInput.className = "visually-hidden";
+    document.body.appendChild(fileInput);
     fileInput.addEventListener("change", e => {
       if (e.target.files && e.target.files[0]) handleDocs([e.target.files[0]]);
+      fileInput.remove();
     });
     fileInput.click();
   });
