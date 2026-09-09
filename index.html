@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Comptabilité Mensuelle</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root {
     --bg: #f4f6f9;
@@ -86,6 +87,24 @@
   .stat.balance .value.positive { color: var(--green); }
   .stat.balance .value.negative { color: var(--red); }
 
+  .charts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .chart-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    padding: 16px 20px;
+  }
+  .chart-card h3 { font-size: 1rem; margin-bottom: 12px; }
+  .chart-card.full { grid-column: 1 / -1; }
+  .chart-wrap { position: relative; height: 240px; }
+  .chart-empty { color: var(--muted); font-size: .9rem; text-align: center; padding: 40px 0; }
+
   .card {
     background: var(--card);
     border: 1px solid var(--border);
@@ -110,6 +129,7 @@
   .empty { padding: 32px; text-align: center; color: var(--muted); }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: .75rem; background: #eef2ff; color: var(--primary); }
   @media (max-width: 600px) {
+    .charts { grid-template-columns: 1fr; }
     form .field { flex: 1 1 100%; }
     form .field input, form .field select { width: 100%; }
   }
@@ -147,6 +167,23 @@
       <div class="stat">
         <div class="label">Transactions</div>
         <div class="value" id="statCount">0</div>
+      </div>
+    </div>
+
+    <div class="charts">
+      <div class="chart-card">
+        <h3>Revenus vs Dépenses du mois</h3>
+        <div class="chart-wrap"><canvas id="chartBar"></canvas></div>
+        <div class="chart-empty" id="barEmpty" style="display:none;">Aucune transaction ce mois-ci.</div>
+      </div>
+      <div class="chart-card">
+        <h3>Répartition des dépenses par catégorie</h3>
+        <div class="chart-wrap"><canvas id="chartDonut"></canvas></div>
+        <div class="chart-empty" id="donutEmpty">Aucune dépense ce mois-ci.</div>
+      </div>
+      <div class="chart-card full">
+        <h3>Évolution du solde (6 derniers mois)</h3>
+        <div class="chart-wrap"><canvas id="chartLine"></canvas></div>
       </div>
     </div>
 
@@ -206,6 +243,8 @@
   const STORAGE_KEY = "compta_transactions_v1";
   let transactions = load();
   let currentMonth = document.getElementById("monthSelect");
+  let charts = { bar: null, donut: null, line: null };
+  const PALETTE = ["#2563eb", "#16a34a", "#dc2626", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#65a30d", "#ea580c", "#4f46e5"];
 
   function load() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
@@ -263,6 +302,7 @@
         </tr>`).join("");
     }
     renderCategories();
+    renderCharts();
   }
 
   function escapeHtml(s) {
@@ -272,6 +312,60 @@
   function renderCategories() {
     const cats = [...new Set(transactions.map(t => t.category).filter(Boolean))].sort();
     document.getElementById("catList").innerHTML = cats.map(c => `<option value="${escapeHtml(c)}">`).join("");
+  }
+
+  function renderCharts() {
+    renderBar();
+    renderDonut();
+    renderLine();
+  }
+
+  function renderBar() {
+    const items = monthTx();
+    const income = items.filter(t => t.type === "income").reduce((s, t) => s + t.amount, 0);
+    const expense = items.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0);
+    const empty = document.getElementById("barEmpty");
+    empty.style.display = items.length === 0 ? "block" : "none";
+    document.getElementById("chartBar").style.display = items.length === 0 ? "none" : "block";
+    if (items.length === 0) { if (charts.bar) { charts.bar.destroy(); charts.bar = null; } return; }
+    const data = { labels: ["Revenus", "Dépenses"], datasets: [{ data: [income, expense], backgroundColor: ["#16a34a", "#dc2626"], borderRadius: 6 }] };
+    if (charts.bar) { charts.bar.data = data; charts.bar.update(); }
+    else charts.bar = new Chart(document.getElementById("chartBar"), { type: "bar", data, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => fmtMoney(ctx.parsed.y) } } }, scales: { y: { beginAtZero: true, ticks: { callback: v => fmtMoney(v) } } } } });
+  }
+
+  function renderDonut() {
+    const items = monthTx().filter(t => t.type === "expense");
+    const byCat = {};
+    items.forEach(t => { const c = t.category || "Sans catégorie"; byCat[c] = (byCat[c] || 0) + t.amount; });
+    const labels = Object.keys(byCat);
+    const data = Object.values(byCat);
+    const empty = document.getElementById("donutEmpty");
+    empty.style.display = labels.length === 0 ? "block" : "none";
+    document.getElementById("chartDonut").style.display = labels.length === 0 ? "none" : "block";
+    if (labels.length === 0) { if (charts.donut) { charts.donut.destroy(); charts.donut = null; } return; }
+    const cfg = { labels, datasets: [{ data, backgroundColor: labels.map((_, i) => PALETTE[i % PALETTE.length]), borderWidth: 2, borderColor: "#fff" }] };
+    if (charts.donut) { charts.donut.data = cfg; charts.donut.update(); }
+    else charts.donut = new Chart(document.getElementById("chartDonut"), { type: "doughnut", data: cfg, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "right", labels: { boxWidth: 12 } }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${fmtMoney(ctx.parsed)}` } } } } });
+  }
+
+  function renderLine() {
+    const m = currentMonth.value;
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(m + "-01");
+      d.setMonth(d.getMonth() - i);
+      months.push(d.toISOString().slice(0, 7));
+    }
+    const balances = months.map(ym => {
+      const items = transactions.filter(t => ymOf(t.date) === ym);
+      const inc = items.filter(t => t.type === "income").reduce((s, t) => s + t.amount, 0);
+      const exp = items.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0);
+      return inc - exp;
+    });
+    const labels = months.map(ym => { const d = new Date(ym + "-01"); return d.toLocaleDateString("fr-FR", { month: "short", year: "2-digit" }); });
+    const data = { labels, datasets: [{ label: "Solde", data: balances, borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.12)", fill: true, tension: .35, pointRadius: 4, pointBackgroundColor: "#2563eb" }] };
+    if (charts.line) { charts.line.data = data; charts.line.update(); }
+    else charts.line = new Chart(document.getElementById("chartLine"), { type: "line", data, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => fmtMoney(ctx.parsed.y) } } }, scales: { y: { ticks: { callback: v => fmtMoney(v) } } } } });
   }
 
   document.getElementById("txForm").addEventListener("submit", e => {
