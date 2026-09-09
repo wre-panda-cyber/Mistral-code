@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Comptabilité Mensuelle</title>
+<style>
+  :root {
+    --bg: #f4f6f9;
+    --card: #ffffff;
+    --primary: #2563eb;
+    --primary-dark: #1e40af;
+    --green: #16a34a;
+    --red: #dc2626;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    padding: 20px;
+  }
+  header {
+    max-width: 1100px;
+    margin: 0 auto 24px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  header h1 { font-size: 1.6rem; font-weight: 700; }
+  header p { color: var(--muted); font-size: .9rem; }
+  .container { max-width: 1100px; margin: 0 auto; }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  select, input, button {
+    font-family: inherit;
+    font-size: .95rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    background: var(--card);
+  }
+  select:focus, input:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+  .btn {
+    cursor: pointer;
+    border: none;
+    font-weight: 600;
+    transition: background .15s;
+  }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--primary-dark); }
+  .btn-ghost { background: var(--card); }
+  .btn-ghost:hover { background: #f0f4ff; }
+  .btn-danger { background: transparent; color: var(--red); border: 1px solid var(--border); padding: 4px 8px; font-size: .85rem; }
+  .btn-danger:hover { background: #fee2e2; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .stat {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: var(--shadow);
+  }
+  .stat .label { color: var(--muted); font-size: .85rem; margin-bottom: 4px; }
+  .stat .value { font-size: 1.5rem; font-weight: 700; }
+  .stat.income .value { color: var(--green); }
+  .stat.expense .value { color: var(--red); }
+  .stat.balance .value.positive { color: var(--green); }
+  .stat.balance .value.negative { color: var(--red); }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    margin-bottom: 24px;
+    overflow: hidden;
+  }
+  .card h2 { padding: 16px 20px; font-size: 1.1rem; border-bottom: 1px solid var(--border); }
+  form { display: flex; flex-wrap: wrap; gap: 10px; padding: 16px 20px; align-items: flex-end; }
+  form .field { display: flex; flex-direction: column; gap: 4px; }
+  form .field label { font-size: .8rem; color: var(--muted); }
+  form .field input, form .field select { min-width: 140px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 12px 16px; font-size: .92rem; }
+  thead th { background: #f9fafb; color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; border-bottom: 1px solid var(--border); }
+  tbody tr { border-bottom: 1px solid var(--border); }
+  tbody tr:last-child { border-bottom: none; }
+  td.amount.income { color: var(--green); font-weight: 600; }
+  td.amount.expense { color: var(--red); font-weight: 600; }
+  .empty { padding: 32px; text-align: center; color: var(--muted); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: .75rem; background: #eef2ff; color: var(--primary); }
+  @media (max-width: 600px) {
+    form .field { flex: 1 1 100%; }
+    form .field input, form .field select { width: 100%; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>📊 Comptabilité Mensuelle</h1>
+      <p>Gérez vos revenus et dépenses par mois</p>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="controls">
+      <label for="monthSelect" style="color:var(--muted);align-self:center;">Mois :</label>
+      <input type="month" id="monthSelect">
+      <button class="btn btn-ghost" id="exportBtn">⬇️ Exporter CSV</button>
+      <button class="btn btn-ghost" id="clearMonthBtn" style="color:var(--red);">🗑️ Vider le mois</button>
+    </div>
+
+    <div class="grid">
+      <div class="stat income">
+        <div class="label">Revenus</div>
+        <div class="value" id="statIncome">0,00 €</div>
+      </div>
+      <div class="stat expense">
+        <div class="label">Dépenses</div>
+        <div class="value" id="statExpense">0,00 €</div>
+      </div>
+      <div class="stat balance">
+        <div class="label">Solde</div>
+        <div class="value" id="statBalance">0,00 €</div>
+      </div>
+      <div class="stat">
+        <div class="label">Transactions</div>
+        <div class="value" id="statCount">0</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Ajouter une transaction</h2>
+      <form id="txForm">
+        <div class="field">
+          <label for="txType">Type</label>
+          <select id="txType">
+            <option value="income">Revenu</option>
+            <option value="expense">Dépense</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="txDate">Date</label>
+          <input type="date" id="txDate" required>
+        </div>
+        <div class="field">
+          <label for="txDesc">Description</label>
+          <input type="text" id="txDesc" placeholder="Ex: Salaire, Loyer..." required>
+        </div>
+        <div class="field">
+          <label for="txCategory">Catégorie</label>
+          <input type="text" id="txCategory" list="catList" placeholder="Ex: Logement">
+        </div>
+        <datalist id="catList"></datalist>
+        <div class="field">
+          <label for="txAmount">Montant (€)</label>
+          <input type="number" id="txAmount" step="0.01" min="0" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Ajouter</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Transactions du mois</h2>
+      <table id="txTable">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Description</th>
+            <th>Catégorie</th>
+            <th>Type</th>
+            <th style="text-align:right;">Montant</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="txBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  const STORAGE_KEY = "compta_transactions_v1";
+  let transactions = load();
+  let currentMonth = document.getElementById("monthSelect");
+
+  function load() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
+    catch { return []; }
+  }
+  function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions)); }
+
+  function fmtMoney(n) {
+    return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(n);
+  }
+  function fmtDate(iso) {
+    const d = new Date(iso);
+    return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  }
+  function ymOf(isoDate) { return isoDate.slice(0, 7); }
+
+  function initMonth() {
+    const now = new Date();
+    currentMonth.value = now.toISOString().slice(0, 7);
+    document.getElementById("txDate").value = now.toISOString().slice(0, 10);
+  }
+
+  function monthTx() {
+    const m = currentMonth.value;
+    return transactions
+      .filter(t => ymOf(t.date) === m)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+  }
+
+  function render() {
+    const items = monthTx();
+    const income = items.filter(t => t.type === "income").reduce((s, t) => s + t.amount, 0);
+    const expense = items.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0);
+    const balance = income - expense;
+
+    document.getElementById("statIncome").textContent = fmtMoney(income);
+    document.getElementById("statExpense").textContent = fmtMoney(expense);
+    const balEl = document.getElementById("statBalance");
+    balEl.textContent = fmtMoney(balance);
+    balEl.className = "value " + (balance >= 0 ? "positive" : "negative");
+    document.getElementById("statCount").textContent = items.length;
+
+    const body = document.getElementById("txBody");
+    if (items.length === 0) {
+      body.innerHTML = '<tr><td class="empty" colspan="6">Aucune transaction ce mois-ci.</td></tr>';
+    } else {
+      body.innerHTML = items.map(t => `
+        <tr>
+          <td>${fmtDate(t.date)}</td>
+          <td>${escapeHtml(t.desc)}</td>
+          <td>${t.category ? `<span class="badge">${escapeHtml(t.category)}</span>` : ""}</td>
+          <td>${t.type === "income" ? "Revenu" : "Dépense"}</td>
+          <td class="amount ${t.type}">${t.type === "income" ? "+" : "−"} ${fmtMoney(t.amount)}</td>
+          <td><button class="btn-danger" data-id="${t.id}">Supprimer</button></td>
+        </tr>`).join("");
+    }
+    renderCategories();
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  function renderCategories() {
+    const cats = [...new Set(transactions.map(t => t.category).filter(Boolean))].sort();
+    document.getElementById("catList").innerHTML = cats.map(c => `<option value="${escapeHtml(c)}">`).join("");
+  }
+
+  document.getElementById("txForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const tx = {
+      id: Date.now(),
+      type: document.getElementById("txType").value,
+      date: document.getElementById("txDate").value,
+      desc: document.getElementById("txDesc").value.trim(),
+      category: document.getElementById("txCategory").value.trim(),
+      amount: parseFloat(document.getElementById("txAmount").value)
+    };
+    if (!tx.date || !tx.desc || !(tx.amount > 0)) return;
+    transactions.push(tx);
+    save();
+    e.target.reset();
+    document.getElementById("txType").value = tx.type;
+    document.getElementById("txDate").value = tx.date;
+    render();
+  });
+
+  document.getElementById("txBody").addEventListener("click", e => {
+    const btn = e.target.closest("[data-id]");
+    if (!btn) return;
+    const id = Number(btn.dataset.id);
+    transactions = transactions.filter(t => t.id !== id);
+    save();
+    render();
+  });
+
+  currentMonth.addEventListener("change", render);
+
+  document.getElementById("clearMonthBtn").addEventListener("click", () => {
+    const m = currentMonth.value;
+    if (!confirm(`Supprimer toutes les transactions de ${m} ?`)) return;
+    transactions = transactions.filter(t => ymOf(t.date) !== m);
+    save();
+    render();
+  });
+
+  document.getElementById("exportBtn").addEventListener("click", () => {
+    const items = monthTx();
+    if (items.length === 0) { alert("Aucune transaction à exporter."); return; }
+    const header = ["Date", "Type", "Description", "Catégorie", "Montant"];
+    const rows = items.map(t => [t.date, t.type, t.desc, t.category, t.amount.toFixed(2)]);
+    const csv = [header, ...rows]
+      .map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `comptabilite_${currentMonth.value}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  initMonth();
+  render();
+})();
+</script>
+</body>
+</html>
