@@ -233,7 +233,7 @@
     <div class="card">
       <h2>📄 Importer une facture / un reçu</h2>
       <div class="import-zone">
-        <p class="dz-intro">Photographiez un reçu, choisissez une capture d'écran ou un PDF. Les champs ci-dessous seront pré-remplis automatiquement.</p>
+        <p class="dz-intro">Photographiez un reçu, ou choisissez une photo (.jpg, .png), une capture d'écran ou un PDF. Les champs ci-dessous seront pré-remplis automatiquement.</p>
         <div class="import-grid">
           <div class="import-tile cam" id="camBtn" role="button" tabindex="0" aria-label="Prendre une photo">
             <span class="it-icon">📷</span>
@@ -243,10 +243,10 @@
           <div class="import-tile file" id="pickBtn" role="button" tabindex="0" aria-label="Choisir un fichier">
             <span class="it-icon">📁</span>
             <span class="it-label">Choisir un fichier</span>
-            <span class="it-sub">Photo, capture d'écran ou PDF</span>
+            <span class="it-sub">Photo (.jpg/.png), capture d'écran ou PDF</span>
           </div>
         </div>
-        <input type="file" id="docInput" accept="application/pdf,image/*" multiple hidden>
+        <input type="file" id="docInput" accept="application/pdf,.jpg,.jpeg,.png,.gif,.webp,image/*" multiple hidden>
         <label class="dropzone" id="dropzone">
           <span class="dz-icon">⬇️</span>
           <strong>Glissez un fichier ici</strong> sur ordinateur
