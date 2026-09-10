@@ -758,22 +758,32 @@
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
     const txs = [];
     const dateRe = /(0[1-9]|[12]\d|3[01])[\/\.-](0[1-9]|1[0-2])[\/\.-](\d{2,4})/;
-    const amtRe = /(-?\d{1,3}(?:[ .]\d{3})*\d*,\d{2})/;
+    const numRe = /-?\d{1,3}(?: \d{3})*[\.,]\d{2}|-?\d+[\.,]\d{2}/g;
     for (const line of lines) {
       const dm = line.match(dateRe);
-      const am = line.match(amtRe);
-      if (dm && am) {
-        const rawAmt = am[1].replace(/\s/g, "").replace(/\.(?=\d{3})/g, "").replace(",", ".");
-        let amt = parseFloat(rawAmt);
-        if (isNaN(amt)) continue;
-        let desc = line.replace(dateRe, " ").replace(amtRe, " ").replace(/\s+/g, " ").trim();
-        if (!desc) continue;
-        if (desc.length > 60) desc = desc.slice(0, 60);
-        const type = amt < 0 ? "expense" : "income";
-        let d = dm[3].length === 2 ? "20" + dm[3] : dm[3];
-        const date = d + "-" + dm[2] + "-" + dm[1];
-        txs.push({ date, desc, amount: Math.abs(amt), type, category: "" });
-      }
+      if (!dm) continue;
+      let d = dm[3].length === 2 ? "20" + dm[3] : dm[3];
+      const date = d + "-" + dm[2] + "-" + dm[1];
+      const rest = line.slice(dm.index + dm[0].length);
+      const numbers = rest.match(numRe);
+      if (!numbers) continue;
+      const parsed = numbers.map(n => parseFloat(n.replace(/ /g, "").replace(",", ".")));
+      let amt = 0, type = "";
+      if (parsed.length >= 3) {
+        if (parsed[1] > 0) { amt = parsed[1]; type = "income"; }
+        else if (parsed[0] > 0) { amt = parsed[0]; type = "expense"; }
+        else continue;
+      } else if (parsed.length === 2) {
+        if (parsed[1] > 0) { amt = parsed[1]; type = "income"; }
+        else if (parsed[0] > 0) { amt = parsed[0]; type = "expense"; }
+        else continue;
+      } else if (parsed.length === 1) {
+        amt = parsed[0]; type = "expense";
+      } else continue;
+      let desc = rest.replace(numRe, "").replace(/\s+/g, " ").trim();
+      if (!desc) continue;
+      if (desc.length > 60) desc = desc.slice(0, 60);
+      txs.push({ date, desc, amount: Math.abs(amt), type, category: "" });
     }
     return txs;
   }
