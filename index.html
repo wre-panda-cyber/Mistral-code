@@ -199,6 +199,7 @@
       <input type="month" id="monthSelect">
       <button class="btn btn-ghost" id="exportBtn">📄 Exporter PDF</button>
       <button class="btn btn-ghost" id="clearMonthBtn" style="color:var(--red);">🗑️ Vider le mois</button>
+      <button class="btn btn-ghost" id="clearAllBtn" style="color:var(--red);">🗑️ Tout effacer</button>
     </div>
 
     <div class="grid">
@@ -499,6 +500,19 @@
     render();
   });
 
+  document.getElementById("clearAllBtn").addEventListener("click", () => {
+    if (!confirm("Supprimer DÉFINITIVEMENT toutes les transactions ET tous les documents ?")) return;
+    if (!confirm("Êtes-vous absolument sûr ? Cette action est irréversible.")) return;
+    transactions = [];
+    documents = [];
+    save();
+    saveDocs();
+    pendingDocId = null;
+    render();
+    renderDocPreview();
+    alert("Toutes les données ont été effacées.");
+  });
+
   /* ===== Export PDF ===== */
   document.getElementById("exportBtn").addEventListener("click", () => {
     const items = monthTx();
@@ -599,12 +613,12 @@
       const found = extractTransactions(lastText);
       const dbg = document.getElementById("debugText");
       if (dbg) dbg.textContent = "--- TEXTE BRUT EXTRAIT ---\n" + lastText.slice(0, 2000) + "\n\n--- " + found.length + " LIGNE(S) DÉTECTÉE(S) ---\n" + found.map(t => t.date + " | " + t.desc + " | " + t.amount + " | " + t.type).join("\n");
-      if (found.length >= 2) {
+      if (found.length >= 1) {
         const add = found.map(t => ({ id: Date.now() + Math.floor(Math.random() * 1e6), ...t, docId: pendingDocId }));
         transactions.push(...add);
         save();
-        setStatus("✅ " + found.length + " transactions détectées et ajoutées. Vérifiez le tableau ci-dessous.", null, false);
-        document.getElementById("docTxHint").textContent = found.length + " lignes importées automatiquement à partir du document.";
+        setStatus("✅ " + found.length + " transaction(s) détectée(s) et ajoutée(s). Vérifiez le tableau ci-dessous.", null, false);
+        document.getElementById("docTxHint").textContent = found.length + " ligne(s) importée(s) automatiquement à partir du document.";
         document.getElementById("docTxHint").style.display = "block";
         render();
         return;
