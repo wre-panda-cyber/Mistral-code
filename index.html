@@ -751,46 +751,62 @@
   function pdfLinesToText(content) {
     const items = (content.items || []).filter(it => it.str && it.str.trim());
     if (!items.length) return "";
-    const rows = {};
-    items.forEach(it => {
-      const y = Math.round(it.transform ? it.transform[5] : (it.itemY || 0));
-      const key = String(y);
-      (rows[key] = rows[key] || []).push(it);
-    });
-    const keys = Object.keys(rows).map(Number).sort((a, b) => b - a);
-    return keys.map(k => rows[String(k)].sort((a, b) => (a.transform ? a.transform[4] : 0) - (b.transform ? b.transform[4] : 0)).map(it => it.str).join(" ")).join("\n");
+    const withY = items.map(it => ({
+      str: it.str,
+      y: it.transform ? it.transform[5] : (it.itemY || 0),
+      x: it.transform ? it.transform[4] : (it.itemX || 0)
+    }));
+    withY.sort((a, b) => b.y - a.y);
+    const TOL = 5;
+    const rows = [];
+    for (const it of withY) {
+      const last = rows[rows.length - 1];
+      if (last && Math.abs(last.y - it.y) <= TOL) last.items.push(it);
+      else rows.push({ y: it.y, items: [it] });
+    }
+    return rows.map(r => r.items.sort((a, b) => a.x - b.x).map(it => it.str).join(" ")).join("\n");
   }
 
   function extractTransactions(text) {
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
     const txs = [];
     const dateRe = /(0[1-9]|[12]\d|3[01])[\/\.-](0[1-9]|1[0-2])[\/\.-](\d{2,4})/;
-    const numRe = /-?\d{1,3}(?: \d{3})*[\.,]\d{2}|-?\d+[\.,]\d{2}/g;
+    let lastSolde = null;
     for (const line of lines) {
       const dm = line.match(dateRe);
       if (!dm) continue;
       let d = dm[3].length === 2 ? "20" + dm[3] : dm[3];
       const date = d + "-" + dm[2] + "-" + dm[1];
-      const rest = line.slice(dm.index + dm[0].length);
-      const numbers = rest.match(numRe);
-      if (!numbers) continue;
-      const parsed = numbers.map(n => parseFloat(n.replace(/ /g, "").replace(",", ".")));
-      let amt = 0, type = "";
-      if (parsed.length >= 3) {
-        if (parsed[1] > 0) { amt = parsed[1]; type = "income"; }
-        else if (parsed[0] > 0) { amt = parsed[0]; type = "expense"; }
-        else continue;
-      } else if (parsed.length === 2) {
-        if (parsed[1] > 0) { amt = parsed[1]; type = "income"; }
-        else if (parsed[0] > 0) { amt = parsed[0]; type = "expense"; }
-        else continue;
-      } else if (parsed.length === 1) {
-        amt = parsed[0]; type = "expense";
-      } else continue;
-      let desc = rest.replace(numRe, "").replace(/\s+/g, " ").trim();
+      const rest = line.slice(dm.index + dm[0].length).trim();
+      const numRe = /-?\d{1,3}(?:[ \u00a0]\d{3})*[\.,]\d{2}|-?\d+[\.,]\d{2}/g;
+      const matches = [];
+      let m;
+      while ((m = numRe.exec(rest)) !== null) matches.push(m);
+      if (!matches.length) continue;
+      const parsed = matches.map(mt => parseFloat(mt[0].replace(/[\s\u00a0]/g, "").replace(",", ".")));
+      const desc = rest.slice(0, matches[0].index).replace(/\s+/g, " ").trim();
       if (!desc) continue;
-      if (desc.length > 60) desc = desc.slice(0, 60);
-      txs.push({ date, desc, amount: Math.abs(amt), type, category: "" });
+      const solde = parsed.length >= 2 ? parsed[parsed.length - 1] : null;
+      const before = solde !== null ? parsed.slice(0, -1) : parsed;
+      let amt = 0, type = "";
+      if (before.length >= 2) {
+        const debit = before[0], credit = before[1];
+        if (credit > 0) { amt = credit; type = "income"; }
+        else if (debit > 0) { amt = debit; type = "expense"; }
+        else continue;
+      } else if (before.length === 1) {
+        amt = before[0];
+        if (amt <= 0) continue;
+        if (solde !== null && lastSolde !== null) type = solde > lastSolde ? "income" : "expense";
+        else {
+          const lc = desc.toLowerCase();
+          type = /salaire|virement reu|virement recu|remise|dep\u00f4t|versement|remboursement|s\u00e9curit\u00e9 sociale|caf|prime/.test(lc) ? "income" : "expense";
+        }
+      } else continue;
+      if (solde !== null) lastSolde = solde;
+      let d2 = desc;
+      if (d2.length > 60) d2 = d2.slice(0, 60);
+      txs.push({ date, desc: d2, amount: Math.abs(amt), type, category: "" });
     }
     return txs;
   }
