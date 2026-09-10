@@ -591,6 +591,17 @@
       }
     }
     if (lastText.trim()) {
+      const found = extractTransactions(lastText);
+      if (found.length >= 2) {
+        const add = found.map(t => ({ id: Date.now() + Math.floor(Math.random() * 1e6), ...t, docId: pendingDocId }));
+        transactions.push(...add);
+        save();
+        setStatus("✅ " + found.length + " transactions détectées et ajoutées. Vérifiez le tableau ci-dessous.", null, false);
+        document.getElementById("docTxHint").textContent = found.length + " lignes importées automatiquement à partir du document.";
+        document.getElementById("docTxHint").style.display = "block";
+        render();
+        return;
+      }
       prefillFromText(lastText);
       setStatus("Document analysé ✅ Vérifiez le formulaire ci-dessous.", null, false);
       document.getElementById("docTxHint").style.display = "block";
@@ -697,7 +708,7 @@
       try {
         const p = await pdf.getPage(i);
         const content = await p.getTextContent();
-        const pageText = content.items.map(it => it.str).join(" ");
+        const pageText = pdfLinesToText(content);
         if (pageText.trim().length > 20) text += pageText + "\n";
       } catch {}
       setStatus("Extraction du texte : page " + i + "/" + pdf.numPages, Math.round(15 + (i / pdf.numPages) * 25), false);
@@ -728,6 +739,43 @@
     }
     if (!text.trim()) throw new Error("Aucun texte extrait du PDF. Essayez une photo du document.");
     return { text, thumb };
+  }
+
+  function pdfLinesToText(content) {
+    const items = (content.items || []).filter(it => it.str && it.str.trim());
+    if (!items.length) return "";
+    const rows = {};
+    items.forEach(it => {
+      const y = Math.round(it.transform ? it.transform[5] : (it.itemY || 0));
+      const key = String(y);
+      (rows[key] = rows[key] || []).push(it);
+    });
+    const keys = Object.keys(rows).map(Number).sort((a, b) => b - a);
+    return keys.map(k => rows[String(k)].sort((a, b) => (a.transform ? a.transform[4] : 0) - (b.transform ? b.transform[4] : 0)).map(it => it.str).join(" ")).join("\n");
+  }
+
+  function extractTransactions(text) {
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const txs = [];
+    const dateRe = /(0[1-9]|[12]\d|3[01])[\/\.-](0[1-9]|1[0-2])[\/\.-](\d{2,4})/;
+    const amtRe = /(-?\d{1,3}(?:[ .]\d{3})*\d*,\d{2})/;
+    for (const line of lines) {
+      const dm = line.match(dateRe);
+      const am = line.match(amtRe);
+      if (dm && am) {
+        const rawAmt = am[1].replace(/\s/g, "").replace(/\.(?=\d{3})/g, "").replace(",", ".");
+        let amt = parseFloat(rawAmt);
+        if (isNaN(amt)) continue;
+        let desc = line.replace(dateRe, " ").replace(amtRe, " ").replace(/\s+/g, " ").trim();
+        if (!desc) continue;
+        if (desc.length > 60) desc = desc.slice(0, 60);
+        const type = amt < 0 ? "expense" : "income";
+        let d = dm[3].length === 2 ? "20" + dm[3] : dm[3];
+        const date = d + "-" + dm[2] + "-" + dm[1];
+        txs.push({ date, desc, amount: Math.abs(amt), type, category: "" });
+      }
+    }
+    return txs;
   }
 
   function prefillFromText(text) {
