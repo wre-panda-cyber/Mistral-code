@@ -670,33 +670,63 @@
   }
 
   async function ocrPdf(file) {
-    const buf = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    setStatus("Lecture du PDF (« " + file.name + " »)...", 0, false);
+    let buf;
+    try { buf = await file.arrayBuffer(); }
+    catch { throw new Error("Impossible de lire le fichier PDF"); }
+    if (file.size > 15 * 1024 * 1024) throw new Error("PDF trop volumineux (>15 Mo). Réduisez-le ou importez une photo.");
+    let pdf;
+    try { pdf = await pdfjsLib.getDocument({ data: buf }).promise; }
+    catch (err) { throw new Error("PDF illisible : " + (err.message || err)); }
+    setStatus("PDF : " + pdf.numPages + " page(s) détectée(s)...", 5, false);
     let text = "";
     let thumb = "";
-    const page = await pdf.getPage(1);
-    const viewport = page.getViewport({ scale: 1.2 });
-    const canvas = document.createElement("canvas");
-    canvas.width = viewport.width; canvas.height = viewport.height;
-    await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
-    thumb = canvas.toDataURL("image/jpeg", 0.7);
+    const renderThumb = async () => {
+      try {
+        const p0 = await pdf.getPage(1);
+        const vp0 = p0.getViewport({ scale: 1.2 });
+        const c = document.createElement("canvas");
+        c.width = vp0.width; c.height = vp0.height;
+        await p0.render({ canvasContext: c.getContext("2d"), viewport: vp0 }).promise;
+        thumb = c.toDataURL("image/jpeg", 0.7);
+      } catch { thumb = ""; }
+    };
+    await renderThumb();
+    setStatus("Extraction du texte des pages...", 15, false);
     for (let i = 1; i <= pdf.numPages; i++) {
-      const p = await pdf.getPage(i);
-      const content = await p.getTextContent();
-      const pageText = content.items.map(it => it.str).join(" ");
-      if (pageText.trim().length > 20) text += pageText + " ";
+      try {
+        const p = await pdf.getPage(i);
+        const content = await p.getTextContent();
+        const pageText = content.items.map(it => it.str).join(" ");
+        if (pageText.trim().length > 20) text += pageText + "\n";
+      } catch {}
+      setStatus("Extraction du texte : page " + i + "/" + pdf.numPages, Math.round(15 + (i / pdf.numPages) * 25), false);
     }
-    if (text.trim().length < 20) {
-      setStatus("PDF scanné détecté, OCR en cours...", null, false);
-      const vp = page.getViewport({ scale: 2 });
-      const cv = document.createElement("canvas");
-      cv.width = vp.width; cv.height = vp.height;
-      await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
-      const res = await Tesseract.recognize(cv.toDataURL("image/png"), "fra", {
-        logger: m => { if (m.status) setStatus("OCR : " + m.status + (m.progress ? " (" + Math.round(m.progress * 100) + "%)" : ""), Math.round((m.progress || 0) * 100)); }
-      });
-      text = res.data.text;
+    if (text.trim().length < 40) {
+      setStatus("PDF scanné détecté : OCR de chaque page (peut prendre quelques minutes)...", 40, false);
+      const maxOcrPages = Math.min(pdf.numPages, 10);
+      for (let i = 1; i <= maxOcrPages; i++) {
+        try {
+          const p = await pdf.getPage(i);
+          const vp = p.getViewport({ scale: 2 });
+          const cv = document.createElement("canvas");
+          cv.width = vp.width; cv.height = Math.min(vp.height, 4000);
+          await p.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+          const res = await Tesseract.recognize(cv.toDataURL("image/jpeg", 0.85), "fra", {
+            logger: m => {
+              if (m.status && m.status === "recognizing text") {
+                const pct = Math.round((m.progress || 0) * 100);
+                setStatus("OCR page " + i + "/" + maxOcrPages + " : " + pct + "%", Math.round(40 + ((i - 1 + (m.progress || 0)) / maxOcrPages) * 55), false);
+              }
+            }
+          });
+          text += res.data.text + "\n";
+        } catch (err) {
+          setStatus("OCR page " + i + " impossible, page ignorée.", null, false);
+        }
+      }
     }
+    if (!text.trim()) throw new Error("Aucun texte extrait du PDF. Essayez une photo du document.");
     return { text, thumb };
   }
 
