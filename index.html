@@ -169,6 +169,10 @@
   .doc-thumb-wrap .rm { position: absolute; top: -6px; right: -6px; background: var(--red); color: #fff; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: .7rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
   .doc-name { font-size: .72rem; color: var(--muted); margin-top: 4px; max-width: 76px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .doc-tx-link { font-size: .8rem; color: var(--muted); margin-top: 10px; }
+  .debug-panel { margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .debug-panel summary { padding: 8px 12px; font-size: .82rem; cursor: pointer; background: #f9fafb; color: var(--muted); }
+  .debug-panel summary:hover { background: #f0f4ff; color: var(--primary); }
+  .debug-panel pre { margin: 0; padding: 10px 12px; font-size: .72rem; max-height: 240px; overflow: auto; white-space: pre-wrap; word-break: break-word; background: #fafafa; color: var(--text); }
   /* input file invisible mais présent (display:none bloque .click() sur iOS Safari) */
   .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
   .dropzone { display: block; }
@@ -257,6 +261,7 @@
         <div class="scan-status" id="scanStatus"></div>
         <div class="doc-preview" id="docPreview"></div>
         <p class="doc-tx-link" id="docTxHint" style="display:none;">✅ Document analysé. Vérifiez les champs ci-dessous puis cliquez sur « Ajouter » : la transaction sera liée à ce document.</p>
+        <details class="debug-panel"><summary>Détails de l'extraction (texte brut & lignes détectées)</summary><pre id="debugText">Importez un document pour voir le texte extrait.</pre></details>
         <button class="btn btn-ghost" id="clearDocsBtn" type="button" style="margin-top:12px;font-size:.85rem;">Effacer les documents</button>
       </div>
     </div>
@@ -592,6 +597,8 @@
     }
     if (lastText.trim()) {
       const found = extractTransactions(lastText);
+      const dbg = document.getElementById("debugText");
+      if (dbg) dbg.textContent = "--- TEXTE BRUT EXTRAIT ---\n" + lastText.slice(0, 2000) + "\n\n--- " + found.length + " LIGNE(S) DÉTECTÉE(S) ---\n" + found.map(t => t.date + " | " + t.desc + " | " + t.amount + " | " + t.type).join("\n");
       if (found.length >= 2) {
         const add = found.map(t => ({ id: Date.now() + Math.floor(Math.random() * 1e6), ...t, docId: pendingDocId }));
         transactions.push(...add);
