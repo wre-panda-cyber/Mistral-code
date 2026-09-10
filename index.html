@@ -609,8 +609,18 @@
         render();
         return;
       }
-      prefillFromText(lastText);
-      setStatus("Document analysé ✅ Vérifiez le formulaire ci-dessous.", null, false);
+      const receipt = extractReceipt(lastText);
+      if (receipt.amount > 0) {
+        document.getElementById("txDate").value = receipt.date;
+        document.getElementById("txDesc").value = receipt.desc;
+        document.getElementById("txType").value = "expense";
+        document.getElementById("txAmount").value = receipt.amount.toFixed(2);
+        if (receipt.category) document.getElementById("txCategory").value = receipt.category;
+        setStatus("✅ Ticket de caisse détecté : " + receipt.amount.toFixed(2) + " € — « " + receipt.desc + " ». Vérifiez et validez.", null, false);
+      } else {
+        prefillFromText(lastText);
+        setStatus("Document analysé ✅ Vérifiez le formulaire ci-dessous.", null, false);
+      }
       document.getElementById("docTxHint").style.display = "block";
     } else {
       setStatus("Aucun texte exploitable détecté. Vous pouvez remplir le formulaire manuellement.", null, false);
@@ -643,6 +653,84 @@
     });
   }
 
+  function preprocessForOcr(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          const maxDim = 2400;
+          if (width > maxDim || height > maxDim) {
+            const ratio = Math.min(maxDim / width, maxDim / height);
+            width = Math.round(width * ratio);
+            height = Math.round(height * ratio);
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width; canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+          try {
+            const imgData = ctx.getImageData(0, 0, width, height);
+            const d = imgData.data;
+            const gray = new Float32Array(width * height);
+            for (let i = 0; i < d.length; i += 4) gray[i / 4] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+            let sum = 0;
+          for (let i = 0; i < gray.length; i++) sum += gray[i];
+          const mean = sum / gray.length;
+          let varSum = 0;
+          for (let i = 0; i < gray.length; i++) { const v = gray[i] - mean; varSum += v * v; }
+          const std = Math.sqrt(varSum / gray.length) || 1;
+          const targetLow = 0, targetHigh = 255;
+          const a = (targetHigh - targetLow) / (2 * Math.min(std, 60));
+          const b = targetHigh / 2 - a * mean;
+          for (let i = 0, j = 0; i < d.length; i += 4, j++) {
+            let v = a * gray[j] + b;
+            v = v < 0 ? 0 : v > 255 ? 255 : v;
+            d[i] = d[i + 1] = d[i + 2] = v;
+          }
+          ctx.putImageData(imgData, 0, 0);
+        } catch (e) {}
+          resolve(canvas.toDataURL("image/jpeg", 0.9));
+        };
+        img.onerror = () => reject(new Error("Image illisible"));
+        img.src = e.target.result;
+      };
+      reader.onerror = () => reject(new Error("Lecture du fichier impossible"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function extractReceipt(text) {
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    let amount = 0, date = "", desc = "", category = "";
+    const lc = text.toLowerCase();
+    const totalRe = /(?:total\s*(?:g[eé]n[eé]ral)?|ttc|a\s*payer|montant\s*[aà]\s*r[eé]gler)\s*:?\s*(\d{1,4}[\.,]\d{2})/i;
+    let best = null;
+    for (const l of lines) {
+      const m = l.match(totalRe);
+      if (m) { best = parseFloat(m[1].replace(",", ".")); break; }
+    }
+    if (best == null) {
+      const nums = (text.match(/\d{1,4}[\.,]\d{2}/g) || []).map(n => parseFloat(n.replace(",", "."))).filter(n => n > 0);
+      nums.sort((a, b) => b - a);
+      if (nums.length) best = nums[0];
+    }
+    if (best != null) amount = best;
+    const dateMatch = text.match(/(0[1-9]|[12]\d|3[01])[\/.-](0[1-9]|1[0-2])[\/.-](\d{2,4})/);
+    if (dateMatch) {
+      let y = dateMatch[3].length === 2 ? "20" + dateMatch[3] : dateMatch[3];
+      date = y + "-" + dateMatch[2] + "-" + dateMatch[1];
+    }
+    const storeLines = lines.filter(l => l.length > 2 && l.length < 30 && !/\d{1,4}[\.,]\d{2}/.test(l) && !/total|ttc|tel|siret|n[°o]|article|qte|qt[eé]|prix|eur|€/i.test(l));
+    if (storeLines.length) desc = storeLines[0].replace(/\s+/g, " ");
+    const catWords = { "supermarch": "Courses", "carrefour": "Courses", "auchan": "Courses", "leclerc": "Courses", "intermarch": "Courses", "casino": "Courses", "ldlc": "Courses", "restaurant": "Sorties", "mcdonald": "Sorties", "burger": "Sorties", "essence": "Transport", "totalenergies": "Transport", "shell": "Transport", "bp": "Transport", "pharmacie": "Sant[eé]", "pharma": "Sant[eé]" };
+    const lcDesc = desc.toLowerCase();
+    for (const k in catWords) if (lcDesc.includes(k)) { category = catWords[k]; break; }
+    if (!category && /supermarch|boulanger|patisserie|marche/.test(lc)) category = "Courses";
+    return { amount, date, desc: desc.slice(0, 60), type: "expense", category };
+  }
+
   function addThumb(doc, prepend) {
     const wrap = document.createElement("div");
     wrap.className = "doc-thumb-wrap";
@@ -670,7 +758,8 @@
   }
 
   async function ocrImage(file) {
-    const dataUrl = await resizeImage(file, 1600);
+    const dataUrl = await preprocessForOcr(file);
+    const thumbUrl = await resizeImage(file, 400);
     setStatus("Analyse OCR en cours (premier lancement peut prendre 20-30 s)...", 5, false);
     try {
       const res = await Tesseract.recognize(dataUrl, "fra", {
@@ -681,7 +770,7 @@
           }
         }
       });
-      return { text: res.data.text, thumb: dataUrl };
+      return { text: res.data.text, thumb: thumbUrl };
     } catch (err) {
       throw new Error("OCR indisponible : " + (err.message || err));
     }
